@@ -1,0 +1,14 @@
+misc/
+test/
+data_chlor_backup/
+data_backup/
+data/
+data_chlor/
+.vscode
+__pycache__
+*.log
+logs/
+submit.sh
+msx*
+ppo/
+test.py

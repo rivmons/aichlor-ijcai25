@@ -1,0 +1,10 @@
+name: aichlor
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - biotite
+  - ipykernel
+  - pip
+  - pip:
+    - -r requirements.txt
