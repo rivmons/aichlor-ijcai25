@@ -3,6 +3,18 @@
 - only thing weird i saw is that some versions of dependencies make epyt throw a weird error where "topologies don't match"
 - shouldn't happen in this case
 
+### you will need to change one file in epyt_control: `rl_env.py`
+* error you'll get: 
+`Traceback (most recent call last):
+  File "/home/rmonsia/test/example.py", line 24, in <module>
+    r = evaluate(my_policy, env)
+  File "/home/rmonsia/test/evaluation.py", line 43, in evaluate
+    obs, reward, terminated, _, info = env.step(action)
+  File "/home/rmonsia/miniforge3/envs/aichlor/lib/python3.9/site-packages/epyt_control/envs/rl_env.py", line 252, in step
+    current_reward = self._compute_reward_function(deepcopy(current_scada_data))
+TypeError: _compute_reward_function() missing 1 required positional argument: 'action'`
+* **go to the rl_env.py file and just copy and paste './rl_env.txt' to that file**
+
 ### important parts of code:
 #### scenario_ids = [0...10] (10 is 365 day scenario)
 - reward function in env.py (_compute_reward_function(...))
@@ -34,6 +46,7 @@
 
 
 ### train a ppo (mlplstm) policy
+#### i think you'll need to change library-specific code for epyt-control if you use 
 * should just work with `python sb3.py`
 * logs to tensorboard
 * collects data to logs/surrogate_training_data.csv that you can just move to data/it_{} directly without any processing

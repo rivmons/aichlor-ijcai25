@@ -18,11 +18,11 @@ if __name__ == "__main__":
     with WaterChlorinationEnv(**load_scenario(scenario_id=0)) as env:
         # Create new random policy
         # TODO: Develop a "smarter" policy/controller
-        my_policy = ChlorinationControlPolicyRandom(env)
+        # my_policy = ChlorinationControlPolicyRandom(env)
 
-        # Evaluate policy
-        r = evaluate(my_policy, env)
-        print(r)
+        # # Evaluate policy
+        # r = evaluate(my_policy, env)
+        # print(r)
 
         policy = ChlorinationControlPolicyNeat(env, 
                                                config_path="./neat-nsga2-config.init",
