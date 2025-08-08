@@ -163,18 +163,18 @@ class WaterChlorinationEnv(EpanetMsxControlEnv):
         scaled_reward = reward * scale
 
         # ---------exp-------------
-        in_bounds = np.maximum(0, np.minimum(nodes_quality - lower_cl_bound, upper_cl_bound - nodes_quality))
-        pos_reward = np.mean(in_bounds) * 5  # reward for staying inside bounds
-
         over = np.clip(nodes_quality - upper_cl_bound, 0, None)
         under = np.clip(lower_cl_bound - nodes_quality, 0, None)
-        neg_penalty = -np.mean(over + under) * 10  # penalty for violations
 
-        exp_reward = pos_reward + neg_penalty
+        exp_reward = -np.mean(over + 5 * under) * 10  # linear penalties
+        bonus = np.mean((nodes_quality >= 0.2) & (nodes_quality <= 0.4)) * 5
+        exp_reward = np.clip(exp_reward + bonus, -50, 50)
+
+        # exp_reward = -np.mean(np.clip(0.2 - nodes_quality, 0, None)) * 100
 
         reward_info = {
-            "cl_exp_term": exp_reward,
-            "cl_penalty": cl_penalty,
+            "exp_reward": exp_reward,
+            "cl_penalty": self.reward_0(scada_data),
             "fairness_penalty": fairness_penalty,
             "control_cost": control_cost,
             "smoothness_penalty": smoothness_penalty,
@@ -182,7 +182,7 @@ class WaterChlorinationEnv(EpanetMsxControlEnv):
             "cl2_violation_upper": float(np.mean(over)),
             "cl2_violation_lower": float(np.mean(under)),
             "cl2_total_deviation": float(np.mean(over + under)),
-            "scaled_reward": scaled_reward
+            "scaled_reward": scaled_reward,
         }
 
         return exp_reward, reward_info
