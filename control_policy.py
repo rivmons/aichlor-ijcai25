@@ -121,19 +121,11 @@ class ChlorinationControlPolicyNeat(ChlorinationControlPolicy):
                 
                 print(f'gid={genome_id}, s_id={scenario_id} : fitness={fitness_s[scenario_id-self.scenario_ids[0]]}; time={time.time()-stime}', flush=True)
                 score['report'] = [[scenario_id]+r for r in score['report']]
-                print(score['report'])
                 with open(f'data/data_{genome_id}.csv', 'a') as f:
                     res = "\n".join(
                         [",".join(list(map(str, x))) for x in score['report']]
                     )
                     f.write(res+'\n\n')
-        # print(fitness_s.shape, np.sum(fitness_s, axis=0), np.sum(fitness_s, axis=1))
-        # with open(f'data/data_{genome_id}.csv', 'a') as f:
-        #     res = "\n\n".join(
-        #         "\n".join(",".join(map(str, inner)) for inner in outer)
-        #         for outer in reports
-        #     )
-        #     f.write(res+'\n\n')
         avg_fitness = np.sum(fitness_s, axis=0) / len(self.scenario_ids)
         genome.fitness.add(avg_fitness)
         return (genome_id, genome.fitness) 
@@ -200,8 +192,6 @@ class ChlorinationControlPolicyNeat(ChlorinationControlPolicy):
         os.makedirs(self.save_path)
 
         winner = p.run(self.eval_genomes, n_generations)
-        # print("Training complete. Best genome:")
-        # print(winner)
 
         self.net = neat.nn.FeedForwardNetwork.create(winner, self.config)
 
@@ -211,9 +201,3 @@ class ChlorinationControlPolicyNeat(ChlorinationControlPolicy):
         ChlorinationControlPolicy.__init__(inst, env)
         inst.net = net
         return inst
-
-    def load(self, genome_path):
-        """Load a saved genome from disk and create the network."""
-        with open(genome_path, "rb") as f:
-            genome = pickle.load(f)
-        self.net = neat.nn.FeedForwardNetwork.create(genome, self.config)

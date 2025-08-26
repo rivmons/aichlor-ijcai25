@@ -3,16 +3,16 @@ from env import WaterChlorinationEnv
 from scenarios import load_scenario
 from gymnasium.wrappers import NormalizeObservation
 import gymnasium
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor, VecNormalize
 import numpy as np
 import os
 import multiprocessing as mp
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.evaluation import evaluate_policy
 import csv
 import torch
-from stable_baselines3.common.callbacks import CallbackList
+import glob
 
 
 class StatsCallback(BaseCallback):
@@ -54,6 +54,10 @@ class StatsCallback(BaseCallback):
                 writer = csv.writer(f)
                 writer.writerow(["episode", "total_reward", "timestep"])
 
+    def _on_training_start(self) -> None:
+        # Now self.training_env is guaranteed to exist
+        self.episode_rewards = [[] for _ in range(self.training_env.num_envs)]
+
     def _on_step(self) -> bool:
         rewards = self.locals.get("rewards", [])
         infos = self.locals.get("infos", [])
@@ -62,12 +66,13 @@ class StatsCallback(BaseCallback):
         dones = self.locals.get("dones", [])
 
         for i in range(len(rewards)):
-            reward = float(rewards[i])
-            self.episode_rewards.append(reward)
+            reward = float(self.training_env.unnormalize_reward(np.array([rewards[i]])))
+            observation = self.training_env.unnormalize_obs(obs[i])
+            self.episode_rewards[i].append(reward)
 
             info = infos[i] if i < len(infos) else {}
             action = actions[i] if i < len(actions) else np.zeros_like(obs[0])
-            observation = obs[i] if i < len(obs) else np.zeros_like(obs[0])
+            # observation = observation if i < len(obs) else np.zeros_like(obs[0])
 
             cl2_upper = info.get("cl2_violation_upper", 0.0)
             cl2_lower = info.get("cl2_violation_lower", 0.0)
@@ -116,8 +121,10 @@ class StatsCallback(BaseCallback):
                 ])
 
             if dones[i]:
-                total_reward = sum(self.episode_rewards)
-                self.logger.record("episode/total_reward", total_reward)
+                total_reward = sum(self.episode_rewards[i])
+                self.episode_rewards[i] = []
+
+                self.logger.record(f"episode/total_reward_{i}", total_reward)
 
                 with open(self.episode_log_path, mode='a', newline='') as f:
                     writer = csv.writer(f)
@@ -126,7 +133,6 @@ class StatsCallback(BaseCallback):
                 if self.verbose:
                     print(f"[Episode {self.episode_idx}] Total reward: {total_reward:.2f}")
 
-                self.episode_rewards = []
                 self.episode_idx += 1
 
         if self.num_timesteps % self.save_freq == 0:
@@ -176,9 +182,11 @@ class SurrogateTrainingDataCallback(BaseCallback):
 
         for i in range(len(rewards)):
             sid = scenario_ids[i]
-            obs_str = ";".join(f"{x}" for x in obs[i])
+            reward = float(self.training_env.unnormalize_reward(np.array([rewards[i]])))
+            observation = self.training_env.unnormalize_obs(obs[i])
+            obs_str = ";".join(f"{x}" for x in observation)
             action_str = ";".join(f"{x}" for x in actions[i])
-            reward_val = rewards[i]
+            reward_val = reward
 
             self._pending_lines.append([sid, obs_str, action_str, reward_val])
 
@@ -222,7 +230,8 @@ def evaluate_model_on_env(model, env, num_episodes=5):
 
 def make_env(sc):
     def _init():
-        return RemoveScadaDataWrapper(NormalizeObservation(WaterChlorinationEnv(**sc)))
+        # return RemoveScadaDataWrapper(WaterChlorinationEnv(**sc))
+        return WaterChlorinationEnv(**sc)
     return _init
 
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -242,7 +251,7 @@ class RemoveScadaDataWrapper(gymnasium.Wrapper):
 
 if __name__ == "__main__":
     mp.set_start_method('spawn', force=True)
-    sids = range(1, 10)
+    sids = range(0, 1)
     scenario_configs = [load_scenario(i) for i in sids]
     print(f'envs: {list(sids)}') 
 
@@ -252,44 +261,60 @@ if __name__ == "__main__":
     print('loaded envs')
 
     # Train
-    stats_cb = StatsCallback(log_dir="./ppo/logs", verbose=1)
-    surrogate_data_cb = SurrogateTrainingDataCallback(log_dir="./ppo/logs", verbose=1)
+    stats_cb = StatsCallback(log_dir="./ppo/logs_quad_exp", verbose=1)
+    surrogate_data_cb = SurrogateTrainingDataCallback(log_dir="./ppo/logs_quad_exp", verbose=1)
     callback = CallbackList([stats_cb, surrogate_data_cb])
 
-    # model = RecurrentPPO('MlpLstmPolicy', vec_env, verbose=1, tensorboard_log="./ppo/tb")
     # policy_kwargs = dict(
-    #     lstm_hidden_size=256,
-    #     shared_lstm=True,  
-    #     net_arch=dict(pi=[128, 64], vf=[128, 64]),
-    #     log_std_init=np.log(1.0),  # std = 1.0
-    #     activation_fn=torch.nn.Tanh,
-    #     ortho_init=False
-    # )
-
-    # policy_kwargs = dict(
-    #     lstm_hidden_size=256,
+    #     lstm_hidden_size=128,
     #     n_lstm_layers=1,
     #     shared_lstm=False,
     #     enable_critic_lstm=True,
-    #     net_arch=dict(pi=[128, 64], vf=[128, 64]),
+    #     net_arch=dict(pi=[64], vf=[64]),
     #     activation_fn=torch.nn.Tanh,
-    #     ortho_init=False,
+    #     ortho_init=True,
     #     log_std_init=np.log(1.0),
     # )
 
     policy_kwargs = dict(
-        lstm_hidden_size=128,
+        lstm_hidden_size=256,
         n_lstm_layers=1,
         shared_lstm=False,
         enable_critic_lstm=True,
-        net_arch=dict(pi=[64], vf=[64]),
+        net_arch=dict(pi=[128, 64], vf=[256, 128, 64]),
         activation_fn=torch.nn.Tanh,
-        ortho_init=True,
+        ortho_init=False,
         log_std_init=np.log(1.0),
     )
 
+    # model = RecurrentPPO(
+    #     "MlpLstmPolicy", 
+    #     vec_env, 
+    #     policy_kwargs=policy_kwargs, 
+    #     verbose=1, 
+    #     tensorboard_log="./ppo/tb", 
+    #     ent_coef=.01,
+    #     n_steps=32,
+    #     batch_size=256
+    # )
 
-    model = RecurrentPPO("MlpLstmPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo/tb")
+    save_files = sorted(glob.glob(os.path.join('ppo', 'logs_quad', 'model_step*')), reverse=True, key=lambda x: int(x.split('_')[-1][:-4]))
+
+    model = RecurrentPPO(
+        "MlpLstmPolicy",
+        VecMonitor(VecNormalize(DummyVecEnv(env_fns))),
+        policy_kwargs=policy_kwargs,
+        verbose=1,
+        tensorboard_log="./ppo/tb",
+        ent_coef=0.01,
+        learning_rate=3e-4,
+        n_steps=864,
+        batch_size=864,
+    )
+    model.set_parameters(save_files[0])
+
+
+    # model = RecurrentPPO.load(save_files[0], env=VecMonitor(VecNormalize(DummyVecEnv(env_fns))))
 
     actor_params = sum(p.numel() for p in model.policy.mlp_extractor.policy_net.parameters())
     critic_params = sum(p.numel() for p in model.policy.mlp_extractor.value_net.parameters())
@@ -304,7 +329,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         model.policy.action_net.bias.data.fill_(3.0)
 
-    model.learn(total_timesteps=10000000, callback=callback, progress_bar=True)
+    model.learn(total_timesteps=10000000, callback=callback, progress_bar=True, log_interval=1)
 
     for i, sc in enumerate(scenario_configs):
         env = NormalizeObservation(WaterChlorinationEnv(**sc))

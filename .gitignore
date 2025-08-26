@@ -12,3 +12,6 @@ submit.sh
 msx*
 ppo/
 test.py
+*.zip
+*.csv
+*.png
